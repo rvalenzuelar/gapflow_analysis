@@ -10,60 +10,144 @@
 import Meteoframes as mf 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import pandas as pd
 import sys
+import Thermodyn as tm
 
 from datetime import datetime
+from matplotlib.path import Path
 
 basedir = '/home/rvalenzuela/SURFACE'
 
-def main(argv):
-
-	case=int(argv)
+def run(case,plot=False):
+	
 	f = get_filenames(case)
 	meso = mf.parse_mesowest_excel(f[0])
 
 	if len(f[1])>1:
 		'  more than one day of obs '
-		surf1 = mf.parse_surface(f[1][0])
-		surf2 = mf.parse_surface(f[1][1])
-		surf=surf1.append(surf2)
+		surf=mf.parse_surface(f[1][0])
+		for ff in f[1][1:]:
+			surf=surf.append(mf.parse_surface(ff))
 	else:
+		' only one day '
 		surf = mf.parse_surface(f[1][0])
+
 	' upsample to 1min'
 	surf = surf.resample('1T').interpolate()
 
-
 	t = get_times(case)
 	mpress = meso.loc[ t[0]: t[1] ]['PMSL'].values
+	mtemp = meso.loc[ t[0]: t[1] ]['TMP'].values
 	mesoidx = meso.loc[ t[0]: t[1] ].index
 
-	spress = surf.loc[mesoidx]['press'].values
+	if case in [1,2]:
+		bias = 9
+	else:
+		bias =0
+
+	spress = surf.loc[mesoidx]['press'].values - bias
+	stemp = surf.loc[mesoidx]['temp'].values
+	smixr = surf.loc[mesoidx]['mixr'].values
 	swspd = surf.loc[mesoidx]['wspd'].values
 	swdir = surf.loc[mesoidx]['wdir'].values
 	ucomp=-swspd*np.sin(np.radians(swdir))
 
-	# print surf.loc[mesoidx]
- 	# print meso.loc[ t[0]: t[1] ]
+	blh= get_BLH(case)
+	[massPa, massU]  = mass_eq(air_density=1.24,BLH=blh)
 
 	pressDiff = spress - mpress
-	[massPa, massU]  = mass_eq(100)
+	d={'ucomp':ucomp,'wdir':swdir,'pdiff':pressDiff}
+	gapflow=pd.DataFrame(data=d, index=mesoidx)
 
-	fig,ax=plt.subplots(figsize=(8,7))
-	ax.scatter(pressDiff, ucomp)
-	ax.plot(massPa/100,massU[0],marker=None)
-	ax.plot(massPa/100,massU[1],linestyle='--',color='r')
-	ax.plot(massPa/100,massU[2],linestyle='--',color='r')
-	ax.grid(True)
-	ax.set_xlabel('Pressure difference, BBY-SCK [hPa]')
-	ax.set_ylabel('BBY zonal wind [m s-1]')
-	ax.set_xlim([-10, 10])
-	ax.set_ylim([-20, 15])
-	ini=mesoidx[0]
-	end=mesoidx[-1]
-	titletimes=ini.strftime('%Y: ')+ini.strftime('%b-%d %H to ')+end.strftime('%b-%d %H UTC ')
-	plt.suptitle('Gap Flow Analysis Case'+str(case).zfill(2)+'\n'+titletimes)
-	plt.show(block=False)
+	s1=datetime(2003,1,21,9,0)
+	s2=datetime(2003,1,22,12,0)
+
+	path=make_polygon(massPa,massU)
+
+	gapflow = check_polygon(gapflow,path)
+	sub = gapflow[gapflow.poly == True]
+
+	if plot:
+		titletxt='Gap Flow Analysis'
+		timetxt='Case {} {}\nBeg: {} UTC\nEnd: {} UTC\nBL height={}'
+		fig,ax=plt.subplots(figsize=(8,7))
+		ax.scatter(gapflow['pdiff'], gapflow['ucomp'])
+		# ax.scatter(gapflow.loc[s1:s2]['pdiff'], gapflow.loc[s1:s2]['ucomp'],color='r')
+		ax.scatter(sub['pdiff'], sub['ucomp'],color='r')
+		ax.plot(massPa/100,massU[0],marker=None)
+		ax.plot(massPa/100,massU[1],linestyle='--',color='r')
+		ax.plot(massPa/100,massU[2],linestyle='--',color='r')
+		ax.grid(True)
+		ax.set_xlabel('Pressure difference, BBY-SCK [hPa]')
+		ax.set_ylabel('BBY zonal wind [m s-1]')
+		ax.set_xlim([-10, 1])
+		ax.set_ylim([-20, 15])
+		ini=mesoidx[0]
+		end=mesoidx[-1]
+		date=ini.strftime('%Y-%b ')
+		beg=ini.strftime('%d %H:%M')
+		end=end.strftime('%d %H:%M')
+		ax.text(-9.5,9,timetxt.format(str(case).zfill(2), date, beg, end, str(blh)), fontsize=14)
+		# plt.suptitle(titletxt.format(str(case).zfill(2), titletimes))
+		plt.show(block=False)
+
+	return sub
+
+def check_polygon(df,path):
+
+	x=df['pdiff'].values
+	y=df['ucomp'].values
+
+	coords=zip(x,y)
+	poly=[]
+	for c in coords:
+		poly.append(path.contains_point(c))
+
+	df['poly'] = pd.Series(poly,index=df.index)
+
+	return df
+
+
+def make_polygon(X,Y):
+
+	x=np.concatenate((X, X[::-1]))/100.
+	y=np.concatenate((Y[2], Y[1][::-1]))
+
+	vertices = zip(x,y)
+	npoints=len(vertices)
+
+	codes=[Path.MOVETO]+[Path.LINETO]*(npoints-2)+[Path.CLOSEPOLY]
+
+	path=Path(vertices,codes)
+	# patch=patches.PathPatch(path,facecolor='orange')
+
+	return path
+
+
+def get_BLH(case):
+	''' 
+	retrieve a boundary layer height based on 
+	a subjective analysis of vertical directional
+	shear in wind profiler
+	'''
+	case=str(case)
+	blh={	'1':100,
+			'2':100,
+			'3':500,
+			'4':500,
+			'5':500,
+			'6':500,
+			'7':500,
+			'8':100,
+			'9':200,
+			'10':150,
+			'11':500,
+			'12':200,
+			'13':500,
+			'14':500	}
+	return blh[case]
 
 
 def get_filenames(casenum):
@@ -106,16 +190,19 @@ def get_times(casenum):
 
 	return slice_times[casenum]
 
-def mass_eq(npoints):
+def mass_eq(air_density=1.24,BLH=500):
 
-	H = 500 # [m]
+	' Gap Flow based on Mass et al (1995) MWR '
+	
+	H = BLH # [m] height of well-mixed boundary layer
 	BLcoeff = 2.8 # boundary layer coef (Deardorff 1972)
-	delPa = np.linspace(450,-900,npoints) # [Pa]
+	npoints=100
+	delPa = np.linspace(0,-1000,npoints) # [Pa]
 	delX = 100000 # [m] distance btwn gap entrance and BBY
-	rho = 1.24 # [kg m-3] average air density
+	rho = air_density # [kg m-3] average air density
 	PGF = -(1/rho)*(delPa/delX)
 
-	Cd = [7.5e-3, 0.5*7.5e-3, 1.5*7.5e-3] # drag coefficient
+	Cd = np.array([7.5e-3, 0.5*7.5e-3, 1.5*7.5e-3]) # drag coefficient
 	umass=[]
 	for c in Cd:
 		K = BLcoeff*c/H 
@@ -124,4 +211,14 @@ def mass_eq(npoints):
 
 	return [delPa, umass]
 
-main(sys.argv[1])
+def air_density():
+
+	Rd=287. # [J K-1 kg-1]
+
+	# density values do not vary significantly	
+	Tv=tm.virtual_temperature(C=stemp, mixing_ratio=smixr/1000.)+273.15
+	air_density1 = (spress*100.)/(Rd*Tv)
+
+	Tv=tm.virtual_temperature(C=mtemp, mixing_ratio=smixr/1000.)+273.15
+	air_density2 = (mpress*100.)/(Rd*Tv)	
+
