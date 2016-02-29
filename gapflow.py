@@ -12,13 +12,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import pandas as pd
-import sys
+import os
 import Thermodyn as tm
 
 from datetime import datetime
 from matplotlib.path import Path
 
-basedir = '/home/rvalenzuela/SURFACE'
 
 def run(case,plot=False):
 	
@@ -58,16 +57,17 @@ def run(case,plot=False):
 	[massPa, massU]  = mass_eq(air_density=1.24,BLH=blh)
 
 	pressDiff = spress - mpress
-	d={'ucomp':ucomp,'wdir':swdir,'pdiff':pressDiff}
+	d={'ucomp':ucomp,'wspd':swspd,'wdir':swdir,'pdiff':pressDiff, 'Bpress':spress, 'Kpress':mpress}
 	gapflow=pd.DataFrame(data=d, index=mesoidx)
 
-	s1=datetime(2003,1,21,9,0)
-	s2=datetime(2003,1,22,12,0)
+	# s1=datetime(2003,1,21,9,0)
+	# s2=datetime(2003,1,22,12,0)
 
 	path=make_polygon(massPa,massU)
 
 	gapflow = check_polygon(gapflow,path)
-	sub = gapflow[gapflow.poly == True]
+	gapflow['gapflow']=((gapflow.poly == True) & (swdir<=120))
+	sub = gapflow[(gapflow.poly == True) & (swdir<=120)]
 
 	if plot:
 		titletxt='Gap Flow Analysis'
@@ -93,7 +93,7 @@ def run(case,plot=False):
 		# plt.suptitle(titletxt.format(str(case).zfill(2), titletimes))
 		plt.show(block=False)
 
-	return sub
+	return gapflow
 
 def check_polygon(df,path):
 
@@ -145,14 +145,15 @@ def get_BLH(case):
 			'10':150,
 			'11':500,
 			'12':200,
-			'13':500,
+			'13':450,
 			'14':500	}
 	return blh[case]
 
 
 def get_filenames(casenum):
 
-	b=basedir
+	basedir=os.path.expanduser('~')
+	b= basedir+'/SURFACE'
 	surf_files={1:   [b+'/case01/KSCK.xls', [b+'/case01/bby98018.met', b+'/case01/bby98019.met']],
 				2:   [b+'/case02/KSCK.xls', [b+'/case02/bby98026.met', b+'/case02/bby98027.met']],
 				3:   [b+'/case03/KSCK.xls', [b+'/case03/bby01023.met', b+'/case03/bby01024.met']],
@@ -185,7 +186,8 @@ def get_times(casenum):
 					10: [datetime(2003,2,15,0,0), datetime(2003,2,17,0,0)],
 					11: [datetime(2004,1,9,0,0), datetime(2004,1,10,0,0)],
 					12: [datetime(2004,2,2,0,0), datetime(2004,2,3,0,0)],
-					13: [datetime(2004,2,16,0,0), datetime(2004,2,19,0,0)],
+					# 13: [datetime(2004,2,16,0,0), datetime(2004,2,19,0,0)],
+					13: [datetime(2004,2,16,0,0), datetime(2004,2,17,6,0)],
 					14: [datetime(2004,2,25,0,0), datetime(2004,2,26,0,0)]}
 
 	return slice_times[casenum]
