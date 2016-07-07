@@ -12,16 +12,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 # import matplotlib.patches as patches
 import pandas as pd
-import os
+#import os
 import Thermodyn as tm
 
 from datetime import datetime
 from matplotlib.path import Path
 
 
-def run(case, plot=False, grid=True, ax=None):
+def run(case, plot=False, grid=True, ax=None, homedir=None,
+        color_surf=(0, 0, 0.5, 0.5),color_wp=(0, 0.5, 0, 0.5)):
 
-    f = get_filenames(case)
+    f = get_filenames(case,homedir)
     meso = mf.parse_mesowest_excel(f[0])
 
     if len(f[1]) > 1:
@@ -64,7 +65,7 @@ def run(case, plot=False, grid=True, ax=None):
 
     ' add wind profiler data at target altitude'
     out = get_windprof(case, gapflow_time=gapflow.index,
-                       target_hgt_km=0.5)
+                       target_hgt_km=0.5,homedir=homedir)
     wp_wspd, wp_wdir = out
     wp_ucomp = -wp_wspd*np.sin(np.radians(wp_wdir))
     gapflow['wp_ws'] = wp_wspd
@@ -75,18 +76,18 @@ def run(case, plot=False, grid=True, ax=None):
 
     gapflow = check_polygon(gapflow, path)
     gapflow['gapflow'] = ((gapflow.poly is True) & (gapflow.wdir <= 120))
-    sub = gapflow[(gapflow.poly is True) & (gapflow.wdir <= 120)]
+#    sub = gapflow[(gapflow.poly is True) & (gapflow.wdir <= 120)]
 
     if plot:
-        timetxt = 'Case {} {}\nBeg: {} UTC\nEnd: {} UTC'
+#        timetxt = 'Case {} {}\nBeg: {} UTC\nEnd: {} UTC'
         if ax is None:
             fig, ax = plt.subplots(figsize=(8, 7))
             ax.set_xlabel('Pressure difference, BBY-SCK [hPa]')
             ax.set_ylabel('BBY zonal wind [m s-1]')
         ax.scatter(gapflow['pdiff'], gapflow['ucomp'],
-                   color=(0, 0, 0.5, 0.5), label='surf')
+                   color=color_surf, label='surf')
         ax.scatter(gapflow['pdiff'], gapflow['wp_ucomp'],
-                   color=(0, 0.5, 0, 0.5), label='wp')
+                   color=color_wp, label='wp')
         # ax.scatter(sub['pdiff'], sub['ucomp'], color='r')
         ax.plot(massPa/100, massU[0], marker=None)
         ax.plot(massPa/100, massU[1], linestyle='--', color='r')
@@ -97,25 +98,30 @@ def run(case, plot=False, grid=True, ax=None):
         ax.set_ylim([-20, 15])
         ini = mesoidx[0]
         end = mesoidx[-1]
-        date = ini.strftime('%Y-%b ')
-        beg = ini.strftime('%d %H:%M')
-        end = end.strftime('%d %H:%M')
-        ax.text(0.03, 0.76, timetxt.format(str(case).zfill(2),
-                                           date, beg, end),
-                fontsize=12,
-                transform=ax.transAxes)
-        plt.show(block=False)
+        date = ini.strftime('%b-%Y ')
+        beg = ini.strftime('%d')
+        end = end.strftime('%d')
+#        ax.text(0.03, 0.76, timetxt.format(str(case).zfill(2),
+#                                           date, beg, end),
+        if beg == end:
+            ax.text(0.03, 0.85,'{} {}'.format(beg,date),       
+                    fontsize=12,
+                    transform=ax.transAxes)
+        else:
+            ax.text(0.03, 0.85,'{}-{} {}'.format(beg,end,date),       
+                    fontsize=12,
+                    transform=ax.transAxes)
 
     return gapflow
 
 
-def get_windprof(case, gapflow_time=None, target_hgt_km=None):
+def get_windprof(case, gapflow_time=None, target_hgt_km=None,homedir=None):
     import Windprof2 as wp
-    import os
+#    import os
     from scipy.interpolate import interp1d
     from datetime import timedelta
 
-    homedir = os.path.expanduser('~')
+#    homedir = os.path.expanduser('~')
     out = wp.make_arrays(resolution='coarse',
                          surface=False, case=str(case), period=False,
                          homedir=homedir)
@@ -204,9 +210,9 @@ def get_BLH(case):
     return blh[case]
 
 
-def get_filenames(casenum):
+def get_filenames(casenum,basedir):
 
-    basedir = os.path.expanduser('~')
+#    basedir = os.path.expanduser('~')
     b = basedir+'/SURFACE'
     surf_files = {1:   [b+'/case01/KSCK.xls', [b+'/case01/bby98018.met', b+'/case01/bby98019.met']],
                   2:   [b+'/case02/KSCK.xls', [b+'/case02/bby98026.met', b+'/case02/bby98027.met']],
