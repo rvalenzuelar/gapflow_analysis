@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 import Windprof2 as wp
 import xpol_tta_analysis as xta
 import numpy as np
-#import os
+import os
 from datetime import timedelta
 
-#homed = os.path.expanduser('~')
-homed = '/localdata'
+homed = os.path.expanduser('~')
+# homed = '/localdata'
 
 
 def get_subdates(gf,tta):
