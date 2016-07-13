@@ -20,7 +20,8 @@ from matplotlib.path import Path
 
 
 def run(case, plot=False, grid=True, ax=None, homedir=None,
-        color_surf=(0, 0, 0.5, 0.5),color_wp=(0, 0.5, 0, 0.5)):
+        color_surf=(0, 0, 0.5, 0.5),color_wp=(0, 0.5, 0, 0.5),
+        add_date=False):
 
     f = get_filenames(case,homedir)
     meso = mf.parse_mesowest_excel(f[0])
@@ -103,14 +104,15 @@ def run(case, plot=False, grid=True, ax=None, homedir=None,
         end = end.strftime('%d')
 #        ax.text(0.03, 0.76, timetxt.format(str(case).zfill(2),
 #                                           date, beg, end),
-        if beg == end:
-            ax.text(0.03, 0.85,'{} {}'.format(beg,date),       
-                    fontsize=12,
-                    transform=ax.transAxes)
-        else:
-            ax.text(0.03, 0.85,'{}-{} {}'.format(beg,end,date),       
-                    fontsize=12,
-                    transform=ax.transAxes)
+        if add_date is True:
+            if beg == end:
+                ax.text(0.03, 0.85,'{} {}'.format(beg,date),       
+                        fontsize=12,
+                        transform=ax.transAxes)
+            else:
+                ax.text(0.03, 0.85,'{}-{} {}'.format(beg,end,date),       
+                        fontsize=12,
+                        transform=ax.transAxes)
 
     return gapflow
 
