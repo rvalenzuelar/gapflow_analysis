@@ -21,11 +21,14 @@ from matplotlib.path import Path
 
 def run(case, plot=False, grid=True, ax=None, homedir=None,
         color_surf=(0, 0, 0.5, 0.5),color_wp=(0, 0.5, 0, 0.5),
-        add_date=False):
+        add_date=False, wprof_hgt=None):
 
     f = get_filenames(case,homedir)
     meso = mf.parse_mesowest_excel(f[0])
-
+    t = get_times(case)
+    mpress = meso.loc[t[0]: t[1]]['PMSL'].values
+    mesoidx = meso.loc[t[0]: t[1]].index
+    
     if len(f[1]) > 1:
         '  more than one day of obs '
         surf = mf.parse_surface(f[1][0])
@@ -36,12 +39,8 @@ def run(case, plot=False, grid=True, ax=None, homedir=None,
         surf = mf.parse_surface(f[1][0])
 
     ''' resample to 1min so we can find
-    mesowest index '''
+        mesowest index '''
     surf = surf.resample('1T').interpolate()
-
-    t = get_times(case)
-    mpress = meso.loc[t[0]: t[1]]['PMSL'].values
-    mesoidx = meso.loc[t[0]: t[1]].index
 
     if case in [1, 2]:
         bias = 9
@@ -65,8 +64,10 @@ def run(case, plot=False, grid=True, ax=None, homedir=None,
     gapflow = gapflow[np.isfinite(gapflow['Kpress'])]
 
     ' add wind profiler data at target altitude'
-    out = get_windprof(case, gapflow_time=gapflow.index,
-                       target_hgt_km=0.5,homedir=homedir)
+    out = get_windprof(case,
+                       gapflow_time  = gapflow.index,
+                       target_hgt_km = wprof_hgt,
+                       homedir       = homedir)
     wp_wspd, wp_wdir = out
     wp_ucomp = -wp_wspd*np.sin(np.radians(wp_wdir))
     gapflow['wp_ws'] = wp_wspd
@@ -117,7 +118,8 @@ def run(case, plot=False, grid=True, ax=None, homedir=None,
     return gapflow
 
 
-def get_windprof(case, gapflow_time=None, target_hgt_km=None,homedir=None):
+def get_windprof(case, gapflow_time=None, target_hgt_km=None,
+                 homedir=None):
     import Windprof2 as wp
 #    import os
     from scipy.interpolate import interp1d

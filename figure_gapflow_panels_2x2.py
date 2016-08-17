@@ -13,8 +13,6 @@ rcParams['xtick.labelsize'] = 15
 rcParams['ytick.labelsize'] = 15
 rcParams['axes.labelsize'] = 15
 
-
-
 #import os
 #homed = os.path.expanduser('~')
 homed = '/localdata'
@@ -43,25 +41,28 @@ with sns.axes_style("white"):
     axes[2] = plt.subplot(gs0[2],gid='(c) 02Feb03')
     axes[3] = plt.subplot(gs0[3],gid='(d) 16-18Feb04')
 
-
+params = dict(wdir_surf=130,wdir_wprof=170,
+              rain_czd=0.25,nhours=2)
 
 try:
     tta
 except NameError:
-    tta = np.array(xta.get_tta_dates([2003,2004]))
+    tta = np.array(xta.get_tta_dates([2003,2004],params))
     tta = tta + timedelta(minutes=55)
     
 
-cases=[8,9,12,13]
+cases=[8,9,12,11]
 for n,c in enumerate(cases):
-    gf = gapflow.run(c, plot=True, grid=False, ax=axes[n], homedir=homed,
-                     color_surf=(0, 0, 0, 0),color_wp=(0, 0, 0, 0))
+    gf = gapflow.run(c, plot=True, grid=False,
+                     ax=axes[n], homedir=homed,
+                     color_surf=(0, 0, 0, 0),
+                     color_wp=(0, 0, 0, 0))
     
 #    tta = wp.get_tta_times(case=str(n+8), homedir=homed)
 #    sub = gf.loc[tta + timedelta(minutes=55)]
     
     
-    subdates=get_subdates(gf,tta)
+    subdates = get_subdates(gf,tta)
     sub = gf.loc[subdates]
     x1, y1 = sub.pdiff.values, sub.ucomp.values
     x2, y2 = sub.pdiff.values, sub.wp_ucomp.values
@@ -84,8 +85,8 @@ axes[1].set_yticks([])
 axes[3].set_yticks([])
 plt.subplots_adjust(wspace=0.1, hspace=0.1)
 
-#plt.show()
+plt.show()
 
-fname='/home/raul/Desktop/gap_flow.png'
-plt.savefig(fname, dpi=300, format='png',papertype='letter',
-            bbox_inches='tight')
+#fname='/home/raul/Desktop/gap_flow.png'
+#plt.savefig(fname, dpi=300, format='png',papertype='letter',
+#            bbox_inches='tight')
