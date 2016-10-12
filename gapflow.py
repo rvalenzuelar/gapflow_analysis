@@ -19,16 +19,23 @@ from datetime import datetime
 from matplotlib.path import Path
 
 
-def run(case, plot=False, grid=True, ax=None, homedir=None,
+def run(case, tta=None, plot_theory=False, grid=True, ax=None, homedir=None,
         color_surf=(0, 0, 0.5, 0.5),color_wp=(0, 0.5, 0, 0.5),
         add_date=False, wprof_hgt=None):
 
+    " process gapflow analysis"
+
+    " first index is mesowest file, second index is \
+    BBY (1 or more files) "
     f = get_filenames(case,homedir)
+
+    " parse mesowest data "
     meso = mf.parse_mesowest_excel(f[0])
     t = get_times(case)
     mpress = meso.loc[t[0]: t[1]]['PMSL'].values
     mesoidx = meso.loc[t[0]: t[1]].index
-    
+
+    " parse surface BBY data "
     if len(f[1]) > 1:
         '  more than one day of obs '
         surf = mf.parse_surface(f[1][0])
@@ -38,58 +45,64 @@ def run(case, plot=False, grid=True, ax=None, homedir=None,
         ' only one day '
         surf = mf.parse_surface(f[1][0])
 
-    ''' resample to 1min so we can find
-        mesowest index '''
+    " resample to 1min so we can find \
+    mesowest index "
     surf = surf.resample('1T').interpolate()
 
+    " adjust bias is mesowest in case 1 and 2 "
     if case in [1, 2]:
         bias = 9
     else:
         bias = 0
-
     spress = surf.loc[mesoidx]['press'].values - bias
+
+    " BBY and mesowest pressure difference "
+    pressDiff = spress - mpress
+
+    " BBY surface winds "
     swspd = surf.loc[mesoidx]['wspd'].values
     swdir = surf.loc[mesoidx]['wdir'].values
     ucomp = -swspd*np.sin(np.radians(swdir))
 
-    # blh = get_BLH(case)
-    blh = 500
-    massPa, massU = mass_eq(air_density=1.24, BLH=blh)
-    pressDiff = spress - mpress
+    " gapflow dataframe "
     d = {'ucomp': ucomp, 'wspd': swspd, 'wdir': swdir,
          'pdiff': pressDiff, 'Bpress': spress, 'Kpress': mpress}
     gapflow = pd.DataFrame(data=d, index=mesoidx)
 
-    ' removes rows with NaN'
+    " removes rows with NaN "
     gapflow = gapflow[np.isfinite(gapflow['Kpress'])]
 
-    ' add wind profiler data at target altitude'
+    " add wind profiler data at target altitude "
     out = get_windprof(case,
-                       gapflow_time  = gapflow.index,
-                       target_hgt_km = wprof_hgt,
-                       homedir       = homedir)
+                       gapflow_time=gapflow.index,
+                       top_hgt_km=wprof_hgt,
+                       homedir=homedir)
     wp_wspd, wp_wdir = out
     wp_ucomp = -wp_wspd*np.sin(np.radians(wp_wdir))
     gapflow['wp_ws'] = wp_wspd
     gapflow['wp_wd'] = wp_wdir
     gapflow['wp_ucomp'] = wp_ucomp
 
+    " Mass etal 95 equation "
+    # blh = get_BLH(case)
+    blh = 500  #[m]
+    massPa, massU = mass_eq(air_density=1.24, BLH=blh)
     path = make_polygon(massPa, massU)
 
     gapflow = check_polygon(gapflow, path)
-    gapflow['gapflow'] = ((gapflow.poly is True) & (gapflow.wdir <= 120))
+    # gapflow['gapflow'] = ((gapflow.poly is True) & (gapflow.wdir <= 120))
 #    sub = gapflow[(gapflow.poly is True) & (gapflow.wdir <= 120)]
 
-    if plot:
-#        timetxt = 'Case {} {}\nBeg: {} UTC\nEnd: {} UTC'
+    " theoretical lines "
+    if plot_theory:
         if ax is None:
             fig, ax = plt.subplots(figsize=(8, 7))
             ax.set_xlabel('Pressure difference, BBY-SCK [hPa]')
             ax.set_ylabel('BBY zonal wind [m s-1]')
-        ax.scatter(gapflow['pdiff'], gapflow['ucomp'],
-                   color=color_surf, label='surf')
-        ax.scatter(gapflow['pdiff'], gapflow['wp_ucomp'],
-                   color=color_wp, label='wp')
+        # ax.scatter(gapflow['pdiff'], gapflow['ucomp'],
+        #            color=color_surf, label='surf')
+        # ax.scatter(gapflow['pdiff'], gapflow['wp_ucomp'],
+        #            color=color_wp, label='wp')
         # ax.scatter(sub['pdiff'], sub['ucomp'], color='r')
         ax.plot(massPa/100, massU[0], marker=None)
         ax.plot(massPa/100, massU[1], linestyle='--', color='r')
@@ -107,25 +120,28 @@ def run(case, plot=False, grid=True, ax=None, homedir=None,
 #                                           date, beg, end),
         if add_date is True:
             if beg == end:
-                ax.text(0.03, 0.85,'{} {}'.format(beg,date),       
+                ax.text(0.03, 0.85,'{} {}'.format(beg,date),
                         fontsize=12,
                         transform=ax.transAxes)
             else:
-                ax.text(0.03, 0.85,'{}-{} {}'.format(beg,end,date),       
+                ax.text(0.03, 0.85,'{}-{} {}'.format(beg,end,date),
                         fontsize=12,
                         transform=ax.transAxes)
 
     return gapflow
 
 
-def get_windprof(case, gapflow_time=None, target_hgt_km=None,
+def get_windprof(case, gapflow_time=None,
+                 top_hgt_km=None,
                  homedir=None):
+
+    " return layer average values; layer is defined \
+    by top_hgt_km"
+
     import Windprof2 as wp
-#    import os
     from scipy.interpolate import interp1d
     from datetime import timedelta
 
-#    homedir = os.path.expanduser('~')
     out = wp.make_arrays(resolution='coarse',
                          surface=False, case=str(case), period=False,
                          homedir=homedir)
@@ -135,7 +151,7 @@ def get_windprof(case, gapflow_time=None, target_hgt_km=None,
     ' match surface obs timestamp'
     time2 = time - timedelta(minutes=5)
 
-    ' get correspoing target time index '
+    ' get corresponding target time index '
     index_dict = dict((value, idx) for idx, value in enumerate(time2))
     target_idx = [index_dict[x] for x in gapflow_time]
 
@@ -144,15 +160,29 @@ def get_windprof(case, gapflow_time=None, target_hgt_km=None,
 
     wspd_target = []
     wdir_target = []
+
     for tt in target_time:
         idx = np.where(time == tt)[0]
-        ws = np.squeeze(wspd[:, idx])
-        wd = np.squeeze(wdir[:, idx])
-        ' interpolate at target altitude '
-        fws = interp1d(hgt, ws)
-        fwd = interp1d(hgt, wd)
-        new_ws = fws(target_hgt_km)
-        new_wd = fwd(target_hgt_km)
+        # ws = np.squeeze(wspd[:, idx])
+        # wd = np.squeeze(wdir[:, idx])
+        # ' interpolate at target altitude '
+        # fws = interp1d(hgt, ws)
+        # fwd = interp1d(hgt, wd)
+        # new_ws = fws(target_hgt_km)
+        # new_wd = fwd(target_hgt_km)
+
+        hidx = np.where(hgt <= top_hgt_km)[0]
+        ws = np.squeeze(wspd[hidx, idx])
+        wd = np.squeeze(wdir[hidx, idx])
+        u = -ws*np.sin(np.radians(wd))
+        v = -ws*np.cos(np.radians(wd))
+        ubar = np.nanmean(u)
+        vbar = np.nanmean(v)
+        new_ws = np.sqrt(ubar**2+vbar**2)
+        new_wd = 270-np.arctan2(vbar,ubar)*180/np.pi
+        if new_wd > 360:
+            new_wd -= 360
+
         wspd_target.append(new_ws)
         wdir_target.append(new_wd)
 
@@ -239,6 +269,7 @@ def get_filenames(casenum,basedir):
 
 def get_times(casenum):
 
+    " storm times "
     slice_times = {1: [datetime(1998, 1, 18, 0, 56), datetime(1998, 1, 18, 23, 56)],
                    2: [datetime(1998, 1, 26, 0, 56), datetime(1998, 1, 27, 3, 56)],
                    3: [datetime(2001, 1, 23, 0, 0), datetime(2001, 1, 25, 0, 0)],
@@ -289,3 +320,18 @@ def air_density():
 
     Tv = tm.virtual_temperature(C=mtemp, mixing_ratio=smixr/1000.)+273.15
     air_density2 = (mpress*100.)/(Rd*Tv)
+
+
+def get_tta_dates(years, param):
+
+    import tta_analysis3 as tta
+
+    out = tta.preprocess(years=years, layer=param['wdir_layer'])
+    # print out
+    result = tta.analyis(out, param)
+    precip = result['precip']
+
+    dates = precip[precip.tta]
+
+    return dates
+
